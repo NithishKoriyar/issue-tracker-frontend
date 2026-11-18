@@ -58,3 +58,4 @@ src/
 - **nginx (prod)** lives in the root `nginx.conf` (`listen 80`). The Dockerfile copies it to `/etc/nginx/templates/`, so envsubst fills `${BACKEND_URL}` and `${NGINX_LOCAL_RESOLVERS}` at startup.
   - Keep `resolver` + `set $backend` + `proxy_pass $backend`, otherwise nginx caches the backend IP and breaks on a backend redeploy.
   - Never add an `add_header` inside a `location`: it drops the server-level security headers there. Use `expires` for caching.
+- **Env:** the only variable is `BACKEND_URL` (`.env.example` → `.env`). In dev, `vite.config.ts` reads it with `loadEnv(mode, '.', '')` as the `/api` proxy target (default `http://localhost:5000`). In production, nginx reads the same name at container start (set it in Railway). No `VITE_` prefix on purpose: `VITE_*` values can be bundled into browser code, and the browser must only ever call the relative `/api`.
