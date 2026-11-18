@@ -1,9 +1,10 @@
-import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useEffect, useState } from 'react'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
 import { MessageSquareIcon, PlusIcon, XIcon } from 'lucide-react'
 import { IssueFormDialog } from '@/components/issues/IssueFormDialog'
 import { StatusBadge } from '@/components/issues/StatusBadge'
+import { PaginationBar } from '@/components/layout/PaginationBar'
 import { EmptyState, ErrorState } from '@/components/layout/QueryState'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -37,19 +38,27 @@ import type { IssueFilters } from '@/types'
 
 const ALL = 'all'
 const UNASSIGNED = 'unassigned'
+const PAGE_SIZE = 10
 
-// Filters live in the URL (?status=open&assignee=3), so they survive a
-// reload and can be shared or linked to (the dashboard links here).
+// Filters and the page live in the URL (?status=open&assignee=3&page=2), so
+// they survive a reload and can be shared or linked to (the dashboard links here).
 function parseAssignee(value: unknown): IssueFilters['assignee'] {
   if (value === UNASSIGNED) return UNASSIGNED
   const id = Number(value)
   return Number.isInteger(id) && id > 0 ? id : undefined
 }
 
+// Page 1 is left out of the URL; anything that isn't a whole number ≥ 2 → page 1.
+function parsePage(value: unknown): number | undefined {
+  const page = Number(value)
+  return Number.isInteger(page) && page > 1 ? page : undefined
+}
+
 export const Route = createFileRoute('/(core)/issues/')({
   validateSearch: (search: Record<string, unknown>): IssueFilters => ({
     status: isIssueStatus(search.status) ? search.status : undefined,
     assignee: parseAssignee(search.assignee),
+    page: parsePage(search.page),
   }),
   staticData: { title: 'Issues' },
   component: IssuesPage,
@@ -58,14 +67,42 @@ export const Route = createFileRoute('/(core)/issues/')({
 function IssuesPage() {
   const { isAdmin } = useAuth()
   const filters = Route.useSearch()
+  const page = filters.page ?? 1
   const navigate = useNavigate({ from: Route.fullPath })
   const [createOpen, setCreateOpen] = useState(false)
 
-  // The server already scopes this: admin → all issues, user → only theirs.
+  // One page at a time. The server already scopes the rows (admin → all,
+  // user → only theirs). Each page is cached under its own key, and
+  // keepPreviousData keeps the current rows on screen while the next page
+  // loads, instead of flashing a skeleton.
   const issuesQuery = useQuery({
-    queryKey: [QUERY_KEYS.issues, filters],
-    queryFn: () => issuesService.list(filters),
+    queryKey: [QUERY_KEYS.issues, { ...filters, page, pageSize: PAGE_SIZE }],
+    queryFn: () =>
+      issuesService.list({ ...filters, page, pageSize: PAGE_SIZE }),
+    placeholderData: keepPreviousData,
   })
+  const pagination = issuesQuery.data?.pagination
+
+  // A URL like ?page=9 when there are only 3 pages (or after deleting the
+  // last issue on the last page) → jump to the last page that exists.
+  useEffect(() => {
+    if (pagination && page > pagination.totalPages) {
+      void navigate({
+        search: (prev) => ({
+          ...prev,
+          page: pagination.totalPages > 1 ? pagination.totalPages : undefined,
+        }),
+        replace: true,
+      })
+    }
+  }, [pagination, page, navigate])
+
+  const goToPage = (next: number) => {
+    void navigate({
+      search: (prev) => ({ ...prev, page: next > 1 ? next : undefined }),
+    })
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
 
   // Admin only: names for the assignee filter.
   const usersQuery = useQuery({
@@ -74,8 +111,11 @@ function IssuesPage() {
     enabled: isAdmin,
   })
 
+  // A new filter means a different result set → back to page 1.
   const setFilter = (changes: Partial<IssueFilters>) =>
-    void navigate({ search: (prev) => ({ ...prev, ...changes }) })
+    void navigate({
+      search: (prev) => ({ ...prev, ...changes, page: undefined }),
+    })
 
   const hasFilters =
     filters.status !== undefined || (isAdmin && filters.assignee !== undefined)
@@ -94,7 +134,7 @@ function IssuesPage() {
     ),
   }
 
-  const issues = issuesQuery.data ?? []
+  const issues = issuesQuery.data?.issues ?? []
 
   return (
     <div className="space-y-6">
@@ -166,7 +206,11 @@ function IssuesPage() {
             size="sm"
             onClick={() =>
               void navigate({
-                search: { status: undefined, assignee: undefined },
+                search: {
+                  status: undefined,
+                  assignee: undefined,
+                  page: undefined,
+                },
               })
             }
           >
@@ -175,9 +219,9 @@ function IssuesPage() {
           </Button>
         )}
 
-        {issuesQuery.isSuccess && (
+        {pagination && (
           <span className="ml-auto text-sm text-muted-foreground">
-            {issues.length === 1 ? '1 issue' : `${issues.length} issues`}
+            {pagination.total === 1 ? '1 issue' : `${pagination.total} issues`}
           </span>
         )}
       </div>
@@ -223,74 +267,91 @@ function IssuesPage() {
               }
             />
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="hidden w-16 pl-4 sm:table-cell">
-                    #
-                  </TableHead>
-                  <TableHead className="pl-4 sm:pl-2">Title</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="hidden md:table-cell">
-                    Assignee
-                  </TableHead>
-                  <TableHead className="hidden text-right lg:table-cell">
-                    Comments
-                  </TableHead>
-                  <TableHead className="hidden pr-4 text-right md:table-cell">
-                    Updated
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {issues.map((issue) => (
-                  <TableRow
-                    key={issue.id}
-                    className="cursor-pointer"
-                    onClick={() =>
-                      void navigate({
-                        to: '/issues/$issueId',
-                        params: { issueId: issue.id },
-                      })
-                    }
-                  >
-                    <TableCell className="hidden pl-4 text-muted-foreground tabular-nums sm:table-cell">
-                      {issue.id}
-                    </TableCell>
-                    <TableCell className="max-w-64 pl-4 sm:max-w-md sm:pl-2">
-                      {/* A real link too, for keyboard users and "open in new tab". */}
-                      <Link
-                        to="/issues/$issueId"
-                        params={{ issueId: issue.id }}
-                        className="block truncate font-medium hover:underline"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {issue.title}
-                      </Link>
-                    </TableCell>
-                    <TableCell>
-                      <StatusBadge status={issue.status} />
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell">
-                      {issue.assignee?.name ?? (
-                        <span className="text-muted-foreground">
-                          Unassigned
-                        </span>
-                      )}
-                    </TableCell>
-                    <TableCell className="hidden text-right text-muted-foreground tabular-nums lg:table-cell">
-                      <span className="inline-flex items-center gap-1">
-                        <MessageSquareIcon className="size-3.5" />
-                        {issue.commentCount}
-                      </span>
-                    </TableCell>
-                    <TableCell className="hidden pr-4 text-right text-muted-foreground md:table-cell">
-                      {timeAgo(issue.updatedAt)}
-                    </TableCell>
+            // Dimmed while the next page loads (previous rows stay visible).
+            <div
+              className={
+                issuesQuery.isPlaceholderData
+                  ? 'opacity-60 transition-opacity'
+                  : 'transition-opacity'
+              }
+              aria-busy={issuesQuery.isPlaceholderData}
+            >
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="hidden w-16 pl-4 sm:table-cell">
+                      #
+                    </TableHead>
+                    <TableHead className="pl-4 sm:pl-2">Title</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="hidden md:table-cell">
+                      Assignee
+                    </TableHead>
+                    <TableHead className="hidden text-right lg:table-cell">
+                      Comments
+                    </TableHead>
+                    <TableHead className="hidden pr-4 text-right md:table-cell">
+                      Updated
+                    </TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {issues.map((issue) => (
+                    <TableRow
+                      key={issue.id}
+                      className="cursor-pointer"
+                      onClick={() =>
+                        void navigate({
+                          to: '/issues/$issueId',
+                          params: { issueId: issue.id },
+                        })
+                      }
+                    >
+                      <TableCell className="hidden pl-4 text-muted-foreground tabular-nums sm:table-cell">
+                        {issue.id}
+                      </TableCell>
+                      <TableCell className="max-w-64 pl-4 sm:max-w-md sm:pl-2">
+                        {/* A real link too, for keyboard users and "open in new tab". */}
+                        <Link
+                          to="/issues/$issueId"
+                          params={{ issueId: issue.id }}
+                          className="block truncate font-medium hover:underline"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {issue.title}
+                        </Link>
+                      </TableCell>
+                      <TableCell>
+                        <StatusBadge status={issue.status} />
+                      </TableCell>
+                      <TableCell className="hidden md:table-cell">
+                        {issue.assignee?.name ?? (
+                          <span className="text-muted-foreground">
+                            Unassigned
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell className="hidden text-right text-muted-foreground tabular-nums lg:table-cell">
+                        <span className="inline-flex items-center gap-1">
+                          <MessageSquareIcon className="size-3.5" />
+                          {issue.commentCount}
+                        </span>
+                      </TableCell>
+                      <TableCell className="hidden pr-4 text-right text-muted-foreground md:table-cell">
+                        {timeAgo(issue.updatedAt)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              {pagination && pagination.totalPages > 1 && (
+                <PaginationBar
+                  pagination={pagination}
+                  onPageChange={goToPage}
+                  disabled={issuesQuery.isPlaceholderData}
+                />
+              )}
+            </div>
           )}
         </CardContent>
       </Card>
