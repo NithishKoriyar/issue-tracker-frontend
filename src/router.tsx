@@ -4,6 +4,9 @@ import { routeTree } from './routeTree.gen'
 export function getRouter() {
   const router = createTanStackRouter({
     routeTree,
+    // Placeholder — the real auth state is passed in main.tsx via
+    // <RouterProvider context={{ auth }} />.
+    context: { auth: undefined! },
     scrollRestoration: true,
     defaultPreload: 'intent',
     defaultPreloadStaleTime: 0,

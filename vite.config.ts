@@ -8,6 +8,13 @@ import tailwindcss from '@tailwindcss/vite'
 
 const config = defineConfig({
   resolve: { tsconfigPaths: true },
+  // Dev: forward /api to the Express API so the browser sees ONE origin
+  // (same as nginx in production) — no CORS, first-party refresh cookie.
+  server: {
+    proxy: {
+      '/api': 'http://localhost:5000',
+    },
+  },
   plugins: [
     devtools(),
     tailwindcss(),
