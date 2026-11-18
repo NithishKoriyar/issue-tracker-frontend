@@ -201,6 +201,8 @@ function RecentIssues({
   )
 }
 
+// The 5 people with the most unfinished work (the server picks them).
+// Each name opens that person's issues; "View all" opens the Users page.
 function IssuesByUser({
   users,
   className,
@@ -212,15 +214,25 @@ function IssuesByUser({
     <Card className={className}>
       <CardHeader>
         <CardTitle>Issues by user</CardTitle>
-        <CardDescription>Who is working on what</CardDescription>
+        <CardDescription>
+          Who is working on what — busiest first
+        </CardDescription>
+        <CardAction>
+          <Link
+            to="/users"
+            className="inline-flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground"
+          >
+            View all <ArrowRightIcon className="size-4" />
+          </Link>
+        </CardAction>
       </CardHeader>
       <CardContent>
         {users === undefined ? (
           <Skeleton className="h-40 w-full" />
         ) : users.length === 0 ? (
           <EmptyState
-            title="No users yet"
-            description="People who sign up appear here."
+            title="Nobody has issues yet"
+            description="Assign an issue to someone and they'll show up here."
           />
         ) : (
           <Table>
@@ -228,7 +240,7 @@ function IssuesByUser({
               <TableRow>
                 <TableHead>User</TableHead>
                 <TableHead className="text-right">Open</TableHead>
-                <TableHead className="text-right">Active</TableHead>
+                <TableHead className="text-right">In progress</TableHead>
                 <TableHead className="text-right">Closed</TableHead>
               </TableRow>
             </TableHeader>

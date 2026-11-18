@@ -16,7 +16,7 @@ src/
     (core)/index.tsx      /            dashboard (role-aware)
     (core)/issues/index.tsx      /issues      paginated list (10/page); filters + page in the URL (?status=, ?assignee=, ?page=)
     (core)/issues/$issueId.tsx   /issues/:id  detail, status, comments; admin edit/delete
-    (core)/users.tsx      /users       admin only (requireAdmin), read-only; debounced search (?q= in the URL)
+    (core)/users.tsx      /users       admin only (requireAdmin), read-only; paginated (10/page) + debounced search (?q=, ?page= in the URL)
   lib/api.ts              axios instance, in-memory access token, interceptors (Bearer, 401 → refresh → retry), ApiError
   lib/api.constants.ts    API_ROUTES (every backend path) + QUERY_KEYS (every cache-key prefix)
   lib/auth.context.tsx    AuthProvider + useAuth
@@ -42,7 +42,7 @@ src/
 
 - Pages call `useQuery` / `useMutation` directly with service methods; keys start with a `QUERY_KEYS` value.
 - After any issue change, call `invalidateIssueData(queryClient, id)`. Lists, the dashboard and Users counts all depend on issues.
-- `GET /issues` returns `{ issues, pagination }` (not a bare array). Cached list data under `[QUERY_KEYS.issues, …]` has that shape too, so keep it when editing the cache with `setQueriesData` (see DeleteIssueButton).
+- `GET /issues` returns `{ issues, pagination }` and `GET /users` returns `{ users, pagination }` (not bare arrays). Cached list data under `[QUERY_KEYS.issues, …]` has that shape too, so keep it when editing the cache with `setQueriesData` (see DeleteIssueButton).
 - Hiding admin buttons is UX only. The API enforces every permission (403 for admin-only actions, 404 for someone else's issue).
 
 ## Gotchas

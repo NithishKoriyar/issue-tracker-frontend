@@ -80,13 +80,19 @@ export function UserPicker({
   // Runs when the component mounts (so the first 5 are ready before the
   // panel opens) and again for each debounced search term. Each term is its
   // own cache entry; keepPreviousData avoids an empty flash between them.
+  // Page 1 only: the picker never pages, it narrows by search instead.
   const usersQuery = useQuery({
     queryKey: [QUERY_KEYS.users, { picker: true, search, limit }],
     queryFn: () =>
-      usersService.list({ search: search || undefined, role: 'user', limit }),
+      usersService.list({
+        search: search || undefined,
+        role: 'user',
+        pageSize: limit,
+      }),
     placeholderData: keepPreviousData,
   })
-  const users = usersQuery.data ?? []
+  const users = usersQuery.data?.users ?? []
+  const totalMatches = usersQuery.data?.pagination.total ?? 0
 
   // --- What the button says ---------------------------------------------
   const selectedOption =
@@ -277,11 +283,11 @@ export function UserPicker({
         </div>
 
         {/* More exist than shown → nudge towards search. */}
-        {users.length === limit && (
+        {totalMatches > users.length && (
           <p className="border-t px-3 py-2 text-xs text-muted-foreground">
             {search
-              ? `Showing the first ${limit} matches — keep typing to narrow down.`
-              : `Showing ${limit} users — type to search everyone.`}
+              ? `Showing ${users.length} of ${totalMatches} matches — keep typing to narrow down.`
+              : `Showing ${users.length} of ${totalMatches} users — type to search.`}
           </p>
         )}
       </PopoverContent>

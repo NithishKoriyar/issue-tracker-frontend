@@ -108,7 +108,14 @@ export interface UserWithCounts extends User {
   issueCounts: IssueCounts
 }
 
-// GET /dashboard/stats. `unassigned` and `byUser` are admin-only.
+// GET /users
+export interface UserListResponse {
+  users: Array<UserWithCounts>
+  pagination: Pagination
+}
+
+// GET /dashboard/stats. `unassigned` and `byUser` are admin-only;
+// byUser = the 5 users with the most unfinished issues (busiest first).
 export interface DashboardStats {
   totals: IssueCounts & { unassigned?: number }
   byUser?: UserWithCounts[]

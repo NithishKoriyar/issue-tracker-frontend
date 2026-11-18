@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
 import { Loader2Icon, SearchIcon, UsersIcon, XIcon } from 'lucide-react'
+import { PaginationBar } from '@/components/layout/PaginationBar'
 import { EmptyState, ErrorState } from '@/components/layout/QueryState'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -24,20 +25,30 @@ import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import { usersService } from '@/services/users.service'
 
 const SEARCH_DELAY_MS = 300
+const PAGE_SIZE = 10
 
 interface UsersSearch {
   q?: string
+  page?: number // 1-based; omitted = page 1
+}
+
+// Page 1 is left out of the URL; anything that isn't a whole number ≥ 2 → page 1.
+function parsePage(value: unknown): number | undefined {
+  const page = Number(value)
+  return Number.isInteger(page) && page > 1 ? page : undefined
 }
 
 // Admin only. Read-only on purpose: people sign up themselves, the admin
 // just needs to see them and how much each one is working on.
-// The search term lives in the URL (/users?q=asha), like the Issues filters.
+// The search term and the page live in the URL (/users?q=asha&page=2), like
+// the Issues filters.
 export const Route = createFileRoute('/(core)/users')({
   validateSearch: (search: Record<string, unknown>): UsersSearch => ({
     q:
       typeof search.q === 'string' && search.q.trim()
         ? search.q.trim()
         : undefined,
+    page: parsePage(search.page),
   }),
   beforeLoad: ({ context }) => requireAdmin(context.auth),
   staticData: { title: 'Users' },
@@ -46,7 +57,8 @@ export const Route = createFileRoute('/(core)/users')({
 
 function UsersPage() {
   const { user: me } = useAuth()
-  const { q } = Route.useSearch()
+  const { q, page: pageParam } = Route.useSearch()
+  const page = pageParam ?? 1
   const navigate = useNavigate({ from: Route.fullPath })
 
   // What's in the box (updates on every keystroke) vs. what we search for
@@ -62,6 +74,7 @@ function UsersPage() {
     if (debouncedTerm !== lastPushed.current) {
       lastPushed.current = debouncedTerm
       void navigate({
+        // No `page` here on purpose: a new search starts again at page 1.
         search: { q: debouncedTerm || undefined },
         replace: true, // typing shouldn't fill the browser history
       })
@@ -74,15 +87,39 @@ function UsersPage() {
     }
   }, [q])
 
-  // Each search term is its own cache entry; keepPreviousData keeps the last
-  // results on screen while the next search loads.
+  // Each search term + page is its own cache entry; keepPreviousData keeps
+  // the last rows on screen while the next search or page loads.
   const usersQuery = useQuery({
-    queryKey: [QUERY_KEYS.users, { search: q ?? '' }],
-    queryFn: () => usersService.list({ search: q }),
+    queryKey: [
+      QUERY_KEYS.users,
+      { search: q ?? '', page, pageSize: PAGE_SIZE },
+    ],
+    queryFn: () => usersService.list({ search: q, page, pageSize: PAGE_SIZE }),
     placeholderData: keepPreviousData,
   })
+  const pagination = usersQuery.data?.pagination
 
-  const users = usersQuery.data ?? []
+  // ?page=9 when there are only 3 pages → jump to the last page that exists.
+  useEffect(() => {
+    if (pagination && page > pagination.totalPages) {
+      void navigate({
+        search: (prev) => ({
+          ...prev,
+          page: pagination.totalPages > 1 ? pagination.totalPages : undefined,
+        }),
+        replace: true,
+      })
+    }
+  }, [pagination, page, navigate])
+
+  const goToPage = (next: number) => {
+    void navigate({
+      search: (prev) => ({ ...prev, page: next > 1 ? next : undefined }),
+    })
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const users = usersQuery.data?.users ?? []
   // Typing, or waiting for the server → spinner in the search box.
   const searching =
     term.trim() !== debouncedTerm ||
@@ -133,9 +170,9 @@ function UsersPage() {
             ) : null}
           </div>
         </div>
-        {usersQuery.isSuccess && (
+        {pagination && (
           <span className="ml-auto text-sm text-muted-foreground">
-            {users.length === 1 ? '1 user' : `${users.length} users`}
+            {pagination.total === 1 ? '1 user' : `${pagination.total} users`}
           </span>
         )}
       </div>
@@ -175,79 +212,94 @@ function UsersPage() {
               <EmptyState icon={UsersIcon} title="No users yet" />
             )
           ) : (
-            <Table
+            // Dimmed while the next search or page loads.
+            <div
               className={
                 usersQuery.isPlaceholderData
                   ? 'opacity-60 transition-opacity'
-                  : ''
+                  : 'transition-opacity'
               }
+              aria-busy={usersQuery.isPlaceholderData}
             >
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="pl-4">User</TableHead>
-                  <TableHead>Role</TableHead>
-                  <TableHead className="hidden md:table-cell">Joined</TableHead>
-                  <TableHead className="text-right">Open</TableHead>
-                  <TableHead className="hidden text-right sm:table-cell">
-                    In progress
-                  </TableHead>
-                  <TableHead className="hidden text-right sm:table-cell">
-                    Closed
-                  </TableHead>
-                  <TableHead className="pr-4 text-right">Total</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {users.map((u) => (
-                  <TableRow key={u.id}>
-                    <TableCell className="max-w-56 pl-4">
-                      <div className="flex items-center gap-2">
-                        {u.role === 'user' ? (
-                          // Jump to this person's issues.
-                          <Link
-                            to="/issues"
-                            search={{ assignee: u.id }}
-                            className="truncate font-medium hover:underline"
-                          >
-                            {u.name}
-                          </Link>
-                        ) : (
-                          <span className="truncate font-medium">{u.name}</span>
-                        )}
-                        {u.id === me?.id && (
-                          <Badge variant="secondary">You</Badge>
-                        )}
-                      </div>
-                      <p className="truncate text-xs text-muted-foreground">
-                        {u.email}
-                      </p>
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={u.role === 'admin' ? 'default' : 'outline'}
-                      >
-                        {u.role === 'admin' ? 'Admin' : 'User'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="hidden text-muted-foreground md:table-cell">
-                      {formatDate(u.createdAt)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {u.issueCounts.open}
-                    </TableCell>
-                    <TableCell className="hidden text-right tabular-nums sm:table-cell">
-                      {u.issueCounts.inProgress}
-                    </TableCell>
-                    <TableCell className="hidden text-right tabular-nums sm:table-cell">
-                      {u.issueCounts.closed}
-                    </TableCell>
-                    <TableCell className="pr-4 text-right font-medium tabular-nums">
-                      {u.issueCounts.total}
-                    </TableCell>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="pl-4">User</TableHead>
+                    <TableHead>Role</TableHead>
+                    <TableHead className="hidden md:table-cell">
+                      Joined
+                    </TableHead>
+                    <TableHead className="text-right">Open</TableHead>
+                    <TableHead className="hidden text-right sm:table-cell">
+                      In progress
+                    </TableHead>
+                    <TableHead className="hidden text-right sm:table-cell">
+                      Closed
+                    </TableHead>
+                    <TableHead className="pr-4 text-right">Total</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {users.map((u) => (
+                    <TableRow key={u.id}>
+                      <TableCell className="max-w-56 pl-4">
+                        <div className="flex items-center gap-2">
+                          {u.role === 'user' ? (
+                            // Jump to this person's issues.
+                            <Link
+                              to="/issues"
+                              search={{ assignee: u.id }}
+                              className="truncate font-medium hover:underline"
+                            >
+                              {u.name}
+                            </Link>
+                          ) : (
+                            <span className="truncate font-medium">
+                              {u.name}
+                            </span>
+                          )}
+                          {u.id === me?.id && (
+                            <Badge variant="secondary">You</Badge>
+                          )}
+                        </div>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {u.email}
+                        </p>
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={u.role === 'admin' ? 'default' : 'outline'}
+                        >
+                          {u.role === 'admin' ? 'Admin' : 'User'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="hidden text-muted-foreground md:table-cell">
+                        {formatDate(u.createdAt)}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {u.issueCounts.open}
+                      </TableCell>
+                      <TableCell className="hidden text-right tabular-nums sm:table-cell">
+                        {u.issueCounts.inProgress}
+                      </TableCell>
+                      <TableCell className="hidden text-right tabular-nums sm:table-cell">
+                        {u.issueCounts.closed}
+                      </TableCell>
+                      <TableCell className="pr-4 text-right font-medium tabular-nums">
+                        {u.issueCounts.total}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              {pagination && pagination.totalPages > 1 && (
+                <PaginationBar
+                  pagination={pagination}
+                  onPageChange={goToPage}
+                  disabled={usersQuery.isPlaceholderData}
+                />
+              )}
+            </div>
           )}
         </CardContent>
       </Card>
