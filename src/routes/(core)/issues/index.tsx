@@ -33,7 +33,7 @@ import {
   isIssueStatus,
 } from '@/lib/issue-status'
 import { issuesService } from '@/services/issues.service'
-import { usersService } from '@/services/users.service'
+import { UserPicker } from '@/components/users/UserPicker'
 import type { IssueFilters } from '@/types'
 
 const ALL = 'all'
@@ -104,13 +104,6 @@ function IssuesPage() {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  // Admin only: names for the assignee filter.
-  const usersQuery = useQuery({
-    queryKey: [QUERY_KEYS.users],
-    queryFn: () => usersService.list(),
-    enabled: isAdmin,
-  })
-
   // A new filter means a different result set → back to page 1.
   const setFilter = (changes: Partial<IssueFilters>) =>
     void navigate({
@@ -124,16 +117,6 @@ function IssuesPage() {
     [ALL]: 'All statuses',
     ...STATUS_LABELS,
   }
-  const assigneeItems: Record<string, string> = {
-    [ALL]: 'Everyone',
-    [UNASSIGNED]: 'Unassigned',
-    ...Object.fromEntries(
-      (usersQuery.data ?? [])
-        .filter((u) => u.role === 'user')
-        .map((u) => [String(u.id), u.name]),
-    ),
-  }
-
   const issues = issuesQuery.data?.issues ?? []
 
   return (
@@ -178,26 +161,21 @@ function IssuesPage() {
         </Select>
 
         {isAdmin && (
-          <Select
-            items={assigneeItems}
-            value={
-              filters.assignee === undefined ? ALL : String(filters.assignee)
+          // Searchable: 5 users up front, type to search everyone.
+          <UserPicker
+            aria-label="Filter by assignee"
+            value={filters.assignee ?? ALL}
+            options={[
+              { value: ALL, label: 'Everyone' },
+              { value: UNASSIGNED, label: 'Unassigned' },
+            ]}
+            onChange={(value) =>
+              setFilter({
+                assignee: value === ALL ? undefined : parseAssignee(value),
+              })
             }
-            onValueChange={(value) =>
-              setFilter({ assignee: parseAssignee(value) })
-            }
-          >
-            <SelectTrigger className="w-44" aria-label="Filter by assignee">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {Object.entries(assigneeItems).map(([value, label]) => (
-                <SelectItem key={value} value={value}>
-                  {label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            className="w-48"
+          />
         )}
 
         {hasFilters && (

@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import type { SubmitEvent } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Loader2Icon } from 'lucide-react'
 import { toast } from 'sonner'
 import { StatusSelect } from '@/components/issues/StatusSelect'
+import { UserPicker } from '@/components/users/UserPicker'
+import type { UserPickerValue } from '@/components/users/UserPicker'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -15,19 +17,10 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { toApiError } from '@/lib/api'
-import { QUERY_KEYS } from '@/lib/api.constants'
 import { invalidateIssueData } from '@/lib/query'
 import { issuesService } from '@/services/issues.service'
-import { usersService } from '@/services/users.service'
 import type { Issue, IssueInput, IssueStatus } from '@/types'
 
 const UNASSIGNED = 'unassigned'
@@ -68,26 +61,11 @@ function IssueForm({ issue, onDone }: { issue?: Issue; onDone: () => void }) {
   const [title, setTitle] = useState(issue?.title ?? '')
   const [description, setDescription] = useState(issue?.description ?? '')
   const [status, setStatus] = useState<IssueStatus>(issue?.status ?? 'open')
-  const [assignee, setAssignee] = useState(
-    issue?.assignee ? String(issue.assignee.id) : UNASSIGNED,
+  // A user id, or UNASSIGNED.
+  const [assignee, setAssignee] = useState<UserPickerValue>(
+    issue?.assignee?.id ?? UNASSIGNED,
   )
   const [error, setError] = useState<string | null>(null)
-
-  // Who can be assigned: regular users (same cached list as the Users page).
-  const usersQuery = useQuery({
-    queryKey: [QUERY_KEYS.users],
-    queryFn: () => usersService.list(),
-  })
-  const assignable = (usersQuery.data ?? []).filter((u) => u.role === 'user')
-
-  const assigneeItems: Record<string, string> = {
-    [UNASSIGNED]: 'Unassigned',
-    ...Object.fromEntries(assignable.map((u) => [String(u.id), u.name])),
-  }
-  // Keep the current assignee visible even if they're not in the list.
-  if (issue?.assignee && !(String(issue.assignee.id) in assigneeItems)) {
-    assigneeItems[String(issue.assignee.id)] = issue.assignee.name
-  }
 
   const mutation = useMutation({
     mutationFn: (input: IssueInput) =>
@@ -113,7 +91,7 @@ function IssueForm({ issue, onDone }: { issue?: Issue; onDone: () => void }) {
       title: title.trim(),
       description: description.trim(),
       status,
-      assignedTo: assignee === UNASSIGNED ? null : Number(assignee),
+      assignedTo: typeof assignee === 'number' ? assignee : null,
     })
   }
 
@@ -156,24 +134,15 @@ function IssueForm({ issue, onDone }: { issue?: Issue; onDone: () => void }) {
         </div>
         <div className="space-y-2">
           <Label htmlFor="issue-assignee">Assignee</Label>
-          <Select
-            items={assigneeItems}
+          {/* Searchable: 5 users up front, type to search everyone. */}
+          <UserPicker
+            id="issue-assignee"
             value={assignee}
-            onValueChange={(next) => {
-              if (typeof next === 'string') setAssignee(next)
-            }}
-          >
-            <SelectTrigger id="issue-assignee" className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {Object.entries(assigneeItems).map(([value, label]) => (
-                <SelectItem key={value} value={value}>
-                  {label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            onChange={setAssignee}
+            options={[{ value: UNASSIGNED, label: 'Unassigned' }]}
+            selectedUser={issue?.assignee}
+            className="w-full"
+          />
         </div>
       </div>
 

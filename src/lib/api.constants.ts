@@ -19,6 +19,7 @@ export const API_ROUTES = {
   },
   users: {
     list: '/users',
+    byId: (id: number) => `/users/${id}`,
   },
   dashboard: {
     stats: '/dashboard/stats',
