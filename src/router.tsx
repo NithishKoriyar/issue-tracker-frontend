@@ -19,4 +19,9 @@ declare module '@tanstack/react-router' {
   interface Register {
     router: ReturnType<typeof getRouter>
   }
+  // Each (core) page declares `staticData: { title }`; the layout shows it in
+  // the header and the browser tab.
+  interface StaticDataRouteOption {
+    title?: string
+  }
 }

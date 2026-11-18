@@ -14,6 +14,9 @@ import { Route as coreRouteRouteImport } from './routes/(core)/route'
 import { Route as authLoginRouteImport } from './routes/(auth)/login'
 import { Route as authRegisterRouteImport } from './routes/(auth)/register'
 import { Route as coreIndexRouteImport } from './routes/(core)/index'
+import { Route as coreUsersRouteImport } from './routes/(core)/users'
+import { Route as coreIssuesIndexRouteImport } from './routes/(core)/issues/index'
+import { Route as coreIssuesIssueIdRouteImport } from './routes/(core)/issues/$issueId'
 
 const authRouteRoute = authRouteRouteImport.update({
   id: '/(auth)',
@@ -38,16 +41,37 @@ const coreIndexRoute = coreIndexRouteImport.update({
   path: '/',
   getParentRoute: () => coreRouteRoute,
 } as any)
+const coreUsersRoute = coreUsersRouteImport.update({
+  id: '/users',
+  path: '/users',
+  getParentRoute: () => coreRouteRoute,
+} as any)
+const coreIssuesIndexRoute = coreIssuesIndexRouteImport.update({
+  id: '/issues/',
+  path: '/issues/',
+  getParentRoute: () => coreRouteRoute,
+} as any)
+const coreIssuesIssueIdRoute = coreIssuesIssueIdRouteImport.update({
+  id: '/issues/$issueId',
+  path: '/issues/$issueId',
+  getParentRoute: () => coreRouteRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof coreIndexRoute
   '/login': typeof authLoginRoute
   '/register': typeof authRegisterRoute
+  '/users': typeof coreUsersRoute
+  '/issues/$issueId': typeof coreIssuesIssueIdRoute
+  '/issues/': typeof coreIssuesIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof coreIndexRoute
   '/login': typeof authLoginRoute
   '/register': typeof authRegisterRoute
+  '/users': typeof coreUsersRoute
+  '/issues/$issueId': typeof coreIssuesIssueIdRoute
+  '/issues': typeof coreIssuesIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -55,20 +79,27 @@ export interface FileRoutesById {
   '/(core)': typeof coreRouteRouteWithChildren
   '/(auth)/login': typeof authLoginRoute
   '/(auth)/register': typeof authRegisterRoute
+  '/(core)/users': typeof coreUsersRoute
   '/(core)/': typeof coreIndexRoute
+  '/(core)/issues/$issueId': typeof coreIssuesIssueIdRoute
+  '/(core)/issues/': typeof coreIssuesIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/login' | '/register'
+  fullPaths:
+    '/' | '/login' | '/register' | '/users' | '/issues/$issueId' | '/issues/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/login' | '/register'
+  to: '/' | '/login' | '/register' | '/users' | '/issues/$issueId' | '/issues'
   id:
     | '__root__'
     | '/(auth)'
     | '/(core)'
     | '/(auth)/login'
     | '/(auth)/register'
+    | '/(core)/users'
     | '/(core)/'
+    | '/(core)/issues/$issueId'
+    | '/(core)/issues/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -113,6 +144,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof coreIndexRouteImport
       parentRoute: typeof coreRouteRoute
     }
+    '/(core)/users': {
+      id: '/(core)/users'
+      path: '/users'
+      fullPath: '/users'
+      preLoaderRoute: typeof coreUsersRouteImport
+      parentRoute: typeof coreRouteRoute
+    }
+    '/(core)/issues/': {
+      id: '/(core)/issues/'
+      path: '/issues'
+      fullPath: '/issues/'
+      preLoaderRoute: typeof coreIssuesIndexRouteImport
+      parentRoute: typeof coreRouteRoute
+    }
+    '/(core)/issues/$issueId': {
+      id: '/(core)/issues/$issueId'
+      path: '/issues/$issueId'
+      fullPath: '/issues/$issueId'
+      preLoaderRoute: typeof coreIssuesIssueIdRouteImport
+      parentRoute: typeof coreRouteRoute
+    }
   }
 }
 
@@ -131,11 +183,17 @@ const authRouteRouteWithChildren = authRouteRoute._addFileChildren(
 )
 
 interface coreRouteRouteChildren {
+  coreUsersRoute: typeof coreUsersRoute
   coreIndexRoute: typeof coreIndexRoute
+  coreIssuesIssueIdRoute: typeof coreIssuesIssueIdRoute
+  coreIssuesIndexRoute: typeof coreIssuesIndexRoute
 }
 
 const coreRouteRouteChildren: coreRouteRouteChildren = {
+  coreUsersRoute: coreUsersRoute,
   coreIndexRoute: coreIndexRoute,
+  coreIssuesIssueIdRoute: coreIssuesIssueIdRoute,
+  coreIssuesIndexRoute: coreIssuesIndexRoute,
 }
 
 const coreRouteRouteWithChildren = coreRouteRoute._addFileChildren(
